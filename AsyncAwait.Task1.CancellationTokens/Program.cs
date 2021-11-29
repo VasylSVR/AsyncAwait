@@ -8,16 +8,30 @@
  */
 
 using System;
+using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace AsyncAwait.Task1.CancellationTokens
 {
     class Program
     {
+        private static readonly ConcurrentQueue<CancellationTokenSource> TokenSources = new ConcurrentQueue<CancellationTokenSource>();
+        private static CancellationTokenSource TokenSource
+        {
+            get
+            {
+                var tokenSource = new CancellationTokenSource();
+                TokenSources.Enqueue(tokenSource);
+                return tokenSource;
+            }
+        }
+
         /// <summary>
         /// The Main method should not be changed at all.
         /// </summary>
         /// <param name="args"></param>
-        static void Main(string[] args)
+        static void Main(string[] _)
         {
             Console.WriteLine("Mentoring program L2. Async/await.V1. Task 1");
             Console.WriteLine("Calculating the sum of integers from 0 to N.");
@@ -27,10 +41,14 @@ namespace AsyncAwait.Task1.CancellationTokens
             Console.WriteLine("Enter N: ");
 
             string input = Console.ReadLine();
+            CancellationTokenSource lastTokenSource = null;
             while (input.Trim().ToUpper() != "Q")
             {
                 if (int.TryParse(input, out int n))
                 {
+                    lastTokenSource?.Cancel();
+                    var tokenSource = new CancellationTokenSource();
+                    lastTokenSource = tokenSource;
                     CalculateSum(n);
                 }
                 else
@@ -46,17 +64,27 @@ namespace AsyncAwait.Task1.CancellationTokens
             Console.ReadLine();
         }
 
-        private static void CalculateSum(int n)
+        private static async void CalculateSum(int n)
         {
             // todo: make calculation asynchronous
-            long sum = Calculator.Calculate(n);
-            Console.WriteLine($"Sum for {n} = {sum}.");
-            Console.WriteLine();
-            Console.WriteLine("Enter N: ");
-            // todo: add code to process cancellation and uncomment this line    
-            // Console.WriteLine($"Sum for {n} cancelled...");
-                        
+            TokenSources.TryDequeue(out var cancellationTokenSource);
+            cancellationTokenSource?.Cancel();
+            var newCancellationTokenSource = TokenSource;
+
             Console.WriteLine($"The task for {n} started... Enter N to cancel the request:");
+
+            try
+            {
+                long sum = await Task.Run(() => Calculator.CalculateAsync(n, newCancellationTokenSource.Token));
+                Console.WriteLine($"Sum for {n} = {sum}.");
+                Console.WriteLine();
+                Console.WriteLine("Enter N: ");
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine($"Sum for {n} cancelled...");
+                cancellationTokenSource?.Dispose();
+            }  
         }
     }
 }
