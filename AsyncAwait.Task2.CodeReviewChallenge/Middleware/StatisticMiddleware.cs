@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading;
 using System.Threading.Tasks;
 using AsyncAwait.Task2.CodeReviewChallenge.Headers;
 using CloudServices.Interfaces;
@@ -23,21 +22,18 @@ namespace AsyncAwait.Task2.CodeReviewChallenge.Middleware
         {   
             string path = context.Request.Path;
 
-            Task staticRegTask = Task.Run(
-                () => _statisticService.RegisterVisitAsync(path)
-                .ConfigureAwait(false)
-                .GetAwaiter().OnCompleted(UpdateHeaders));
-            Console.WriteLine(staticRegTask.Status); // just for debugging purposes
-            
-            void UpdateHeaders()
-            {
-                context.Response.Headers.Add(
-                    CustomHttpHeaders.TotalPageVisits,
-                    _statisticService.GetVisitsCountAsync(path).GetAwaiter().GetResult().ToString());
-            }
-
-            Thread.Sleep(3000); // without this the statistic counter does not work
+            // removed blocking Thread.Sleep and made the execution asynchronous
+            await Task.Run(() => _statisticService.RegisterVisitAsync(path));
+            await UpdateHeadersAsync(context);
             await _next(context);
+        }
+
+        // the method mede asynchronous and moved from InvokeAsync outside
+        private async Task UpdateHeadersAsync(HttpContext context)
+        {
+            context.Response.Headers.Add(
+                CustomHttpHeaders.TotalPageVisits,
+                (await _statisticService.GetVisitsCountAsync(context.Request.Path)).ToString());
         }
     }
 }
